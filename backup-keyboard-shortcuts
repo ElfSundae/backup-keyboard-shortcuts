@@ -79,7 +79,7 @@ backup() {
     )
 
     for domain in "${domains[@]}"; do
-        echo -n > "$tmp_file"
+        > "$tmp_file"
 
         if ! defaults export "$domain" "$tmp_file" 2>/dev/null; then
             continue
