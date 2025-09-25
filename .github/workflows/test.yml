@@ -39,7 +39,6 @@ jobs:
           echo "::group::Running backup test..."
           # Mock some defaults for backup
           defaults write "$DOMAIN" NSUserKeyEquivalents -dict-add "$MENU_KEY" "@T"
-          killall cfprefsd || true
 
           # Run backup
           ./backup-keyboard-shortcuts backup "$TEST_FILE"
@@ -56,13 +55,12 @@ jobs:
           echo "::group::Running restore test..."
           # Clear the mocked defaults before restore
           defaults delete "$DOMAIN" NSUserKeyEquivalents || true
-          killall cfprefsd || true
 
           # Run restore
           ./backup-keyboard-shortcuts restore -y "$TEST_FILE"
 
           # Verify restore
-          restored_shortcut=$(defaults read "$DOMAIN" NSUserKeyEquivalents | jq -r --arg key "$MENU_KEY" '.[$key]')
+          restored_shortcut=$(/usr/libexec/PlistBuddy -c "Print :NSUserKeyEquivalents:'$MENU_KEY'" /dev/stdin <<< "$(defaults export "$DOMAIN" - 2>/dev/null)" 2>/dev/null || true)
           if [[ "$restored_shortcut" != "@T" ]]; then
             echo "Restore test failed: Shortcut was not restored correctly."
             exit 1
