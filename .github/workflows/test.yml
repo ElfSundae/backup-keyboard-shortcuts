@@ -7,7 +7,7 @@ jobs:
     runs-on: ${{ matrix.macos }}
     strategy:
       matrix:
-        macos: [macos-11, macos-12, macos-13, macos-14, macos-15-intel, macos-latest]
+        macos: [macos-13, macos-14, macos-15-intel, macos-latest]
 
     steps:
     # Checkout the repository
