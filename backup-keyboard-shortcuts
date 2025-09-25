@@ -95,7 +95,7 @@ backup() {
 
     if [[ "${backup_file##*.}" != "xml" ]]; then
         plutil -convert json -r "$backup_file"
-        printf "\n" >> "$backup_file"
+        echo >> "$backup_file"
     fi
 
     echo -e "${GREEN}Keyboard shortcuts have been successfully backed up to file ${backup_file}.${NC}"
