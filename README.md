@@ -22,6 +22,14 @@ It streamlines the management of custom keyboard shortcuts by saving them to a f
 
 ## Installation
 
+### Install via Homebrew
+
+```bash
+brew install backup-keyboard-shortcuts
+```
+
+### Manual Installation
+
 1. Clone this repository:
     ```bash
     git clone https://github.com/ElfSundae/backup-keyboard-shortcuts.git
@@ -37,7 +45,7 @@ It streamlines the management of custom keyboard shortcuts by saving them to a f
     chmod +x backup-keyboard-shortcuts
     ```
 
-3. **Optionally**, move the script to a directory in your `$PATH` for global use:
+3. Optionally, move the script to a directory in your `$PATH` for global use:
     ```bash
     mv backup-keyboard-shortcuts /usr/local/bin/
     ```
