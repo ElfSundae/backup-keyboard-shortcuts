@@ -157,7 +157,7 @@ restore() {
                     fi
                 fi
                 defaults write "$domain" NSUserKeyEquivalents -dict-add "$menu" "$shortcut"
-                echo -e "${GREEN}  Restored shortcut for menu '$menu' to '$shortcut''.${NC}"
+                echo -e "${GREEN}  Restored shortcut for menu '$menu' to '$shortcut'.${NC}"
             else
                 echo -e "${RED}  Skipping invalid entry.${NC}"
             fi
