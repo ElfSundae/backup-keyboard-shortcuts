@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+#
+# A Bash script to backup and restore user-defined keyboard shortcuts on macOS.
+# Author: Elf Sundae
+# Homepage: https://github.com/ElfSundae/backup-keyboard-shortcuts
+
+set -euo pipefail
+
+# Define colors for output messages
+GREEN="\033[0;32m"
+RED="\033[0;31m"
+NC="\033[0m" # No Color
+
+# Define backup file path
+DEFAULT_BACKUP_FILE="$HOME/.backup-keyboard-shortcuts/keyboard-shortcuts.json"
+backup_file="$DEFAULT_BACKUP_FILE"
+
+# Flag to skip confirmation when `-y` is provided
+skip_confirmation=false
+
+# Print script usage information
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [OPTION] [FILE]
+
+Description:
+  This script is used to backup and restore user-defined keyboard shortcuts on macOS.
+  - The backup operation saves custom keyboard shortcuts to a specified file.
+  - The restore operation loads keyboard shortcuts from a backup file.
+
+Options:
+  backup        Backup keyboard shortcuts to a file.
+  restore [-y]  Restore keyboard shortcuts from a file. Use -y to skip confirmation.
+  help, -h, --help  Display this help message.
+
+Arguments:
+  FILE          Optional. Path to the backup file. If not provided, defaults to:
+                $DEFAULT_BACKUP_FILE
+                If the file extension is .xml, the backup file will be in XML format.
+                Otherwise, the backup file will be in JSON format.
+
+If no arguments are provided, the script runs in interactive mode, prompting for
+user input to select an action.
+EOF
+}
+
+# Temporary file for processing
+tmp_file=$(mktemp)
+
+cleanup() {
+    rm -f "$tmp_file"
+}
+
+# Register cleanup function to be called on script exit
+trap cleanup EXIT
+
+# Function to backup keyboard shortcuts
+backup() {
+    backup_dir=$(dirname "$backup_file")
+    if [[ ! -d "$backup_dir" ]]; then
+        mkdir -p "$backup_dir"
+    fi
+
+    plutil -create xml1 "$backup_file"
+
+    # Search for NSUserKeyEquivalents in the user's defaults.
+    #
+    # Note: `defaults find` searches for word in the domain names, keys, and
+    # values of the user's defaults.
+    #
+    # IFS is set up to correctly add domain names containing spaces to the array,
+    # such as `Apple Global Domain`.
+    IFS=$'\n' domains=(
+        $(
+            defaults find NSUserKeyEquivalents |
+            sed -n "s/^Found .* keys in domain '\([^']*\)':.*/\1/p" |
+            sort
+        )
+    )
+
+    for domain in "${domains[@]}"; do
+        echo -n > "$tmp_file"
+
+        if ! defaults export "$domain" "$tmp_file" 2>/dev/null; then
+            continue
+        fi
+
+        if ! plutil -extract NSUserKeyEquivalents xml1 -expect dictionary \
+            -o "$tmp_file" "$tmp_file" >/dev/null 2>&1; then
+            continue
+        fi
+
+        plutil -insert "${domain//./\\.}" -xml "$(cat "$tmp_file")" "$backup_file"
+    done
+
+    if [[ "${backup_file##*.}" != "xml" ]]; then
+        plutil -convert json -r "$backup_file"
+        printf "\n" >> "$backup_file"
+    fi
+
+    echo -e "${GREEN}Keyboard shortcuts have been successfully backed up to file ${backup_file}.${NC}"
+}
+
+# Function to confirm an action with user input. Returns 0 for yes, 1 for no.
+confirm_action() {
+    local prompt="$1"
+    local response
+    while true; do
+        printf "%s (y/n) " "$prompt"
+        read response </dev/tty
+        case "$response" in
+            [Yy]*) return 0 ;;  # Yes
+            [Nn]*) return 1 ;;  # No
+            *) echo "Invalid input. Please enter 'y' or 'n'." ;;
+        esac
+    done
+}
+
+# Function to restore keyboard shortcuts
+restore() {
+    # Check if jq is installed
+    if ! command -v jq &>/dev/null; then
+        echo -e "${RED}Error: 'jq' is required but not installed.${NC}"
+        echo -e "Please install 'jq' using the following command:"
+        echo -e "  brew install jq"
+        echo -e "For more information, visit the jq website: https://jqlang.github.io/jq/"
+        exit 10
+    fi
+
+    # Check if the backup file exists
+    if [[ ! -f "$backup_file" ]]; then
+        echo -e "${RED}Error: Backup file not found at ${backup_file}.${NC}"
+        exit 11
+    fi
+
+    # Convert the backup file to JSON if it's not already in JSON format (i.e. XML).
+    # At the same time, converting to JSON will verfiy the backup file if it is
+    # a valid JSON file.
+    if ! plutil -convert json -r -o "$tmp_file" "$backup_file" >/dev/null 2>&1; then
+        echo -e "${RED}Error: Invalid backup file format. Only JSON or XML file is supported.${NC}"
+        exit 12
+    fi
+
+    # Iterate over top-level keys (domains) in the JSON file
+    jq -r 'keys[]' "$tmp_file" | while read -r domain; do
+        echo -e "${GREEN}Restoring shortcuts for domain: $domain${NC}"
+
+        # Iterate over menu items and shortcuts for the current domain
+        jq -r ".\"$domain\" | to_entries[] | \"\(.key)|#|\(.value)\"" "$tmp_file" | while read -r line; do
+            menu=$(echo "$line" | sed 's/|#|.*//')
+            shortcut=$(echo "$line" | sed 's/.*|#|//')
+            if [[ -n "$menu" && -n "$shortcut" ]]; then
+                if ! $skip_confirmation; then
+                    if ! confirm_action "  Restore shortcut for menu '$menu' to '$shortcut'?"; then
+                        echo "  Skipped."
+                        continue
+                    fi
+                fi
+                defaults write "$domain" NSUserKeyEquivalents -dict-add "$menu" "$shortcut"
+                echo -e "${GREEN}  Restored shortcut for menu '$menu' to '$shortcut''.${NC}"
+            else
+                echo -e "${RED}  Skipping invalid entry.${NC}"
+            fi
+        done
+    done
+
+    echo -e "${GREEN}Keyboard shortcuts have been successfully restored from file ${backup_file}.${NC}"
+}
+
+# User interaction for no-argument mode
+interactive_mode() {
+    echo "Please choose an operation:"
+    select choice in "Backup" "Restore" "Help" "Exit"; do
+        case "$REPLY" in
+            1) backup; break ;;
+            2) restore; break ;;
+            3) usage; break ;;
+            4) exit 0 ;;
+            *) echo "Invalid selection '$REPLY'. Please enter a number between 1 and 4." ;;
+        esac
+    done
+}
+
+# Handle user input and arguments
+if [[ $# -eq 0 ]]; then
+    interactive_mode
+else
+    action=""
+
+    for arg in "$@"; do
+        case "$arg" in
+            backup|restore)
+                if [[ -n "$action" ]]; then
+                    echo "Error: Multiple actions provided ('$action' and '$arg')."
+                    usage
+                    exit 1
+                fi
+                action="$arg"
+                ;;
+            help|-h|--help)
+                usage
+                exit 0
+                ;;
+            -y)
+                skip_confirmation=true
+                ;;
+            *)
+                if [[ "$backup_file" == "$DEFAULT_BACKUP_FILE" ]]; then
+                    backup_file="$arg"
+                else
+                    echo "Error: Multiple files provided ('$backup_file' and '$arg')."
+                    usage
+                    exit 1
+                fi
+                ;;
+        esac
+    done
+
+    if [[ -z "$action" ]]; then
+        echo "Error: No valid action specified."
+        usage
+        exit 1
+    fi
+
+    # Execute the corresponding action
+    $action
+fi

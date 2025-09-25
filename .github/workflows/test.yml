@@ -1,0 +1,80 @@
+name: Test Backup Keyboard Shortcuts Script
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.macos }}
+    strategy:
+      matrix:
+        macos: [macos-11, macos-12, macos-13, macos-14, macos-latest]
+
+    steps:
+    # Checkout the repository
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Install jq dependency
+    - name: Ensure jq is available
+      run: jq --version || brew install jq
+
+    # Run the script with mock tests
+    - name: Test the script
+      env:
+        TEST_FILE: test-keyboard-shortcuts.json
+      run: |
+        set -euo pipefail
+
+        DOMAIN="com.example.TestApp.$RANDOM"
+        MENU_KEY="Test Menu $RANDOM"
+
+        cleanup() {
+          rm -f "$TEST_FILE"
+          defaults delete "$DOMAIN" NSUserKeyEquivalents || true
+          killall cfprefsd || true
+        }
+        trap cleanup EXIT
+
+        backup_test() {
+          echo "::group::Running backup test..."
+          # Mock some defaults for backup
+          defaults write "$DOMAIN" NSUserKeyEquivalents -dict-add "$MENU_KEY" "@T"
+          killall cfprefsd || true
+
+          # Run backup
+          ./backup-keyboard-shortcuts backup "$TEST_FILE"
+          if [[ ! -f "$TEST_FILE" ]]; then
+            echo "Backup test failed: File $TEST_FILE was not created."
+            exit 1
+          fi
+          cat "$TEST_FILE"
+          echo "Backup test passed."
+          echo "::endgroup::"
+        }
+
+        restore_test() {
+          echo "::group::Running restore test..."
+          # Clear the mocked defaults before restore
+          defaults delete "$DOMAIN" NSUserKeyEquivalents || true
+          killall cfprefsd || true
+
+          # Run restore
+          ./backup-keyboard-shortcuts restore -y "$TEST_FILE"
+
+          # Verify restore
+          restored_shortcut=$(defaults read "$DOMAIN" NSUserKeyEquivalents | jq -r --arg key "$MENU_KEY" '.[$key]')
+          if [[ "$restored_shortcut" != "@T" ]]; then
+            echo "Restore test failed: Shortcut was not restored correctly."
+            exit 1
+          fi
+          echo "Restore test passed."
+          echo "::endgroup::"
+        }
+
+        # Check if the script is executable
+        if [[ ! -x ./backup-keyboard-shortcuts ]]; then
+          chmod +x ./backup-keyboard-shortcuts
+        fi
+
+        backup_test
+        restore_test
