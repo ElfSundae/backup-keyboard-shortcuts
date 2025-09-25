@@ -25,7 +25,7 @@ It streamlines the management of custom keyboard shortcuts by saving them to a f
 ### Install via Homebrew
 
 ```bash
-brew install backup-keyboard-shortcuts
+brew install elfsundae/homebrew/backup-keyboard-shortcuts
 ```
 
 ### Manual Installation
