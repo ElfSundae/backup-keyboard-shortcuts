@@ -29,7 +29,7 @@ It streamlines the management of custom keyboard shortcuts by saving them to a f
     ```
     Or download the script directly:
     ```bash
-    curl -O https://github.com/ElfSundae/backup-keyboard-shortcuts/raw/master/backup-keyboard-shortcuts
+    curl -O https://raw.githubusercontent.com/ElfSundae/backup-keyboard-shortcuts/master/backup-keyboard-shortcuts
     ```
 
 2. Make the script executable:
